@@ -1,0 +1,312 @@
+---
+title: "Waze"
+author: "yong yang"
+date: "2024-08-07"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+---
+
+## Project Report
+
+### Introduction/Overview/Executive Summary
+
+#### Dataset Introduction
+This project utilizes an uncommon dataset, the Waze navigation app user behavior dataset. This dataset includes users' navigation behavior and app usage. Variables include total kilometers navigated by users, driving days, session count, device type, and more.
+
+#### Project Objectives
+The goal of this project is to predict user churn. Advanced machine learning techniques are used to construct classification models, specifically applying Random Forest and XGBoost algorithms for modeling and evaluating model performance.
+
+#### Overview of Execution Steps
+1. Data loading and cleaning
+2. Feature engineering
+3. Dataset division
+4. Model training and evaluation
+5. Results analysis and summary
+
+### Methods/Analysis
+
+#### Data Cleaning and Feature Engineering
+1. **Data loading:** Load the dataset from the CSV file.
+2. **Feature engineering:**
+   - Created multiple new features, such as `km_per_driving_day`, `percent_sessions_in_last_month`, `professional_driver`, etc., to enhance the model's predictive power.
+   - Removed missing values to ensure data integrity.
+   - Created a new label feature `label2`, marking churned users as 1 and retained users as 0.
+
+#### Dataset Division
+The dataset is divided into training, validation, and testing sets:
+- 80% of the data is used as the training and validation set, with 75% for training and 25% for validation.
+- The remaining 20% of the data is used as the testing set.
+
+#### Modeling Methods
+1. **Random Forest:**
+   - Set up a parameter grid for hyperparameter tuning, selecting the best `mtry`, `splitrule`, and `min.node.size`.
+   - Train the model using cross-validation.
+   - Evaluate the model's performance on the validation set, calculating RMSE and accuracy.
+
+2. **XGBoost:**
+   - Set up a parameter grid for hyperparameter tuning, selecting the best `nrounds`, `max_depth`, `eta`, and other parameters.
+   - Train the model using cross-validation.
+   - Evaluate the model's performance on the validation set, calculating RMSE and accuracy.
+
+### Results
+
+#### Model Performance
+- **Random Forest Model:**
+  - Validation set RMSE: 0.2199707
+  - Validation set accuracy: 85.44%
+
+- **XGBoost Model:**
+  - Validation set RMSE: 0.3815879
+  - Validation set accuracy: 85.44%
+
+### Conclusion
+
+#### Summary of Report Content
+This project analyzes the Waze navigation app user dataset and constructs two machine learning models, Random Forest and XGBoost, to predict user churn. By performing feature engineering and data cleaning, the predictive performance of the model is improved.
+
+#### Impact
+This project demonstrates how to apply advanced machine learning techniques for user churn prediction and has practical significance. By selecting an uncommon dataset, the project showcases the ability to handle new datasets and its innovativeness.
+
+#### Limitations
+Although the model's performance is relatively good, it may require more features and more complex models for optimization in practical applications. Additionally, the parameter tuning process may require more computational resources and time.
+
+#### Future Work
+In the future, we can consider:
+1. Introducing more features, such as users' socioeconomic background, usage of other apps, etc.
+2. Trying other advanced machine learning models, such as neural networks, support vector machines, etc.
+3. Conducting a more detailed analysis of the data to discover potential influencing factors and improve the model's prediction accuracy.
+
+By making the above improvements, the model's practicality and accuracy can be further enhanced, providing more reliable user churn predictions.
+
+
+```{r install packages}
+# Install necessary packages if they are not already installed
+#install.packages("dplyr")
+#install.packages("tidyr")
+#install.packages("caret")
+#install.packages("xgboost")
+#install.packages("randomForest")
+#install.packages("Metrics")
+```
+
+```{r }
+# Load required libraries
+library(dplyr)
+library(tidyr)
+library(caret)
+library(xgboost)
+library(randomForest)
+library(Metrics)
+```
+
+```{r }
+# Load the dataset
+df0 <- read.csv('waze_dataset.csv')
+```
+
+```{r }
+# Display the first five rows of the dataset
+head(df0)
+
+# Copy the dataset
+df <- df0
+```
+
+```{r }
+# Create 'km_per_driving_day' feature
+df <- df %>%
+  mutate(km_per_driving_day = driven_km_drives / driving_days) %>%
+  mutate(km_per_driving_day = ifelse(is.infinite(km_per_driving_day), 0, km_per_driving_day))
+
+# Create 'percent_sessions_in_last_month' feature
+df <- df %>%
+  mutate(percent_sessions_in_last_month = sessions / total_sessions)
+```
+
+```{r }
+# Create 'professional_driver' feature
+df <- df %>%
+  mutate(professional_driver = ifelse(drives >= 60 & driving_days >= 15, 1, 0))
+
+# Create 'total_sessions_per_day' feature
+df <- df %>%
+  mutate(total_sessions_per_day = total_sessions / n_days_after_onboarding)
+```
+
+```{r }
+# Create 'km_per_hour' feature
+df <- df %>%
+  mutate(km_per_hour = driven_km_drives / (duration_minutes_drives / 60))
+
+# Create 'km_per_drive' feature
+df <- df %>%
+  mutate(km_per_drive = driven_km_drives / drives) %>%
+  mutate(km_per_drive = ifelse(is.infinite(km_per_drive), 0, km_per_drive))
+```
+
+```{r }
+# Create 'percent_of_drives_to_favorite' feature
+df <- df %>%
+  mutate(percent_of_drives_to_favorite = (total_navigations_fav1 + total_navigations_fav2) / total_sessions)
+
+# Drop rows with missing values in the 'label' column
+df <- df %>%
+  drop_na(label)
+```
+
+```{r }
+# Create 'device2' and 'label2' features
+df <- df %>%
+  mutate(device2 = ifelse(device == 'Android', 0, 1),
+         label2 = ifelse(label == 'churned', 1, 0))
+
+# Drop the 'ID' column
+df <- df %>%
+  select(-ID)
+
+# Display the first five rows of the modified dataset
+head(df)
+```
+
+```{r }
+
+# Split the dataset into training and testing sets
+set.seed(1)
+trainIndex <- createDataPartition(df$label2, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+dfTrain <- df[trainIndex, ]
+dfTest  <- df[-trainIndex, ]
+```
+
+```{r }
+# Split the training set into training and validation sets
+trainIndex <- createDataPartition(dfTrain$label2, p = .75, 
+                                  list = FALSE, 
+                                  times = 1)
+dfTrain <- dfTrain[trainIndex, ]
+dfVal  <- dfTrain[-trainIndex, ]
+```
+
+```{r }
+# Separate features and labels for training
+X_train <- dfTrain %>% select(-label, -label2, -device)
+y_train <- dfTrain$label2
+```
+
+```{r }
+# Separate features and labels for validation
+X_val <- dfVal %>% select(-label, -label2, -device)
+y_val <- dfVal$label2
+```
+
+```{r }
+# Separate features and labels for testing
+X_test <- dfTest %>% select(-label, -label2, -device)
+y_test <- dfTest$label2
+```
+
+```{r }
+# Set up random forest parameters
+rf_grid <- expand.grid(
+  mtry = floor(sqrt(ncol(X_train))),
+  splitrule = "gini",
+  min.node.size = 1
+)
+```
+
+```{r }
+# Train random forest model
+# Ensure the response variable is a factor (classification task)
+y_train <- as.factor(y_train)  # Convert y_train to factor
+```
+
+```{r }
+# Define parameter grid
+rf_grid <- expand.grid(mtry = c(2, 4, 6), splitrule = "gini", min.node.size = c(1, 5, 10))
+```
+
+```{r }
+# Train random forest model
+rf_model <- train(
+  X_train, y_train,
+  method = "ranger",
+  trControl = trainControl(method = "cv", number = 4),
+  tuneGrid = rf_grid,
+  importance = 'impurity'
+)
+```
+
+```{r }
+# Optimal parameters and performance
+rf_model$bestTune
+rf_model$results
+```
+
+```{r }
+# Predict on validation set
+rf_val_preds <- predict(rf_model, X_val)
+```
+
+```{r }
+# Convert factor type to numeric type
+y_val_num <- as.numeric(as.character(y_val))
+rf_val_preds_num <- as.numeric(as.character(rf_val_preds))
+```
+
+```{r }
+# Calculate RMSE
+rf_val_rmse <- rmse(y_val_num, rf_val_preds_num)
+rf_val_rmse
+```
+
+```{r }
+# Set up XGBoost parameters
+xgb_grid <- expand.grid(
+  nrounds = 300,
+  max_depth = c(6, 12),
+  eta = c(0.01, 0.1),
+  gamma = 0,
+  colsample_bytree = 1,
+  min_child_weight = c(3, 5),
+  subsample = 1
+)
+```
+
+```{r }
+# Train XGBoost model
+xgb_model <- train(X_train, y_train,
+                   method = "xgbTree",
+                   trControl = trainControl(method = "cv", number = 4),
+                   tuneGrid = xgb_grid)
+
+# Optimal parameters and performance
+xgb_model$bestTune
+xgb_model$results
+```
+
+```{r }
+# Predict on validation set
+xgb_val_preds <- predict(xgb_model, X_val)
+```
+
+```{r }
+# Convert factor type to numeric type
+y_val_num <- as.numeric(as.character(y_val))
+xgb_val_preds <- as.numeric(as.character(xgb_val_preds))
+```
+
+```{r }
+# Calculate RMSE
+xgb_val_rmse <- rmse(y_val, xgb_val_preds)
+xgb_val_rmse
+```
+
+```{r }
+# Calculate accuracy
+accuracy <- mean(y_val == xgb_val_preds)
+accuracy
+```
